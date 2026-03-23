@@ -1,35 +1,29 @@
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
-
-// ВОТ ЗДЕСЬ ИСПРАВЛЕНИЕ: разрешаем входящие соединения со всех адресов
-const io = require('socket.io')(http, {
-    cors: {
-        origin: "*", // Разрешаем всем (для тестов это ок)
-        methods: ["GET", "POST"]
-    }
-});
-
-const path = require('path');
-
-// Это нужно, если ты решишь открыть сервер просто в браузере
-app.use(express.static(path.join(__dirname, 'public')));
+const io = require('socket.io')(http, { cors: { origin: "*" } });
 
 io.on('connection', (socket) => {
-    console.log('Новое подключение:', socket.id);
+    // Вход в комнату
+    socket.on('join-room', (roomName) => {
+        socket.join(roomName);
+        socket.to(roomName).emit('user-joined', socket.id);
+    });
 
+    // Адресная пересылка ключей для P2P
     socket.on('signal', (data) => {
-        // Ретранслируем сигнал всем, кроме отправителя
-        socket.broadcast.emit('signal', data);
+        if (data.to) {
+            io.to(data.to).emit('signal', {
+                from: socket.id,
+                signal: data.signal
+            });
+        }
     });
 
     socket.on('disconnect', () => {
-        console.log('Пользователь отключился');
+        io.emit('user-left', socket.id);
     });
 });
 
-// Render сам подставит нужный порт в переменную PORT
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-    console.log(`Сигнальный сервер запущен на порту ${PORT}`);
-});
+http.listen(PORT, () => console.log('Server Online'));
